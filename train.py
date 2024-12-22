@@ -5,6 +5,7 @@ import torch
 from chargrid2d.dataloader import ChargridDataloader
 from chargrid2d.loss import ChargridLoss
 from chargrid2d.metrics import IoU
+import pandas as pd
 
 from chargrid2d.model import Chargrid2D
 
@@ -14,10 +15,42 @@ def train(weights_folder='weights'):
     N_EPOCHS = 100
     best_loss = np.infty
 
-    dataloader = ChargridDataloader(root='data/sroie/', list_file_name_path='train_files.txt',
-                                    image_size=512, batch_size=1, validation_split=0.1)
-    val_dataloader = dataloader.split_validation()
+    # dataloader = ChargridDataloader(root='data/sroie/', list_file_name_path='train_files.txt',
+    #                                 image_size=512, batch_size=1, validation_split=0.1)
 
+    
+    df = pd.read_csv('/kaggle/input/vietnamese-receipts-mc-ocr-2021/mcocr_train_df.csv')
+    df['anno_polygons'] = df['anno_polygons'].map(eval)
+
+    path_list = []
+    corr_list = []
+    
+    for j in range(len(df)):
+        img_path = os.path.join("/kaggle/input/vietnamese-receipts-mc-ocr-2021/train_images/train_images", df['img_id'][j])
+        path_list.append(img_path)
+    
+        corr = []
+        for i in range(len(df['anno_polygons'][j])):
+            polygon = df['anno_polygons'][j][i]
+            corr.append(convert_bbox_corr(polygon['bbox'], polygon['width'], polygon['height']))
+    
+        corr_list.append(corr)
+    
+    modded_data = {
+        "img_path" : path_list,
+        "modded_corr" : corr_list
+    }
+
+    for s in modded_data:
+        df[s] = modded_data[s]
+
+    df = df.filter(['img_path', 'anno_texts', 'anno_labels', 'modded_corr']).dropna()
+    
+    df['anno_texts'] = df['anno_texts'].map(lambda s: s.split('|||'))
+    df['anno_labels'] = df['anno_labels'].map(lambda s: s.split('|||'))
+    
+    
+    # val_dataloader = dataloader.split_validation()
     loss_fn = ChargridLoss()
     model = Chargrid2D(input_channels=len(dataloader.dataset.corpus) + 1, n_classes=len(dataloader.dataset.target))
     model = model.to(device)
